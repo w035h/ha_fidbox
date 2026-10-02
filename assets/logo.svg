@@ -1,20 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="400" height="160" viewBox="0 0 400 160">
-  <defs>
-    <!-- Official Bluetooth rune: two overlapping triangles forming the Younger Futhark bind-rune,
-         with the vertical line shared. Correct geometry. -->
-    <g id="bt">
-      <path d="M 0 -24 L 16 -8 L 0 8 Z" fill="#41BDF5"/>
-      <path d="M 0 24 L 16 8 L 0 -8 Z" fill="#41BDF5" opacity="0.55"/>
-      <line x1="0" y1="-24" x2="0" y2="24" stroke="#41BDF5" stroke-width="4" stroke-linecap="round"/>
-    </g>
-  </defs>
+  <!-- Signal arcs, radiating from behind the rune -->
+  <path d="M 31 44 A 42 42 0 0 0 31 116" fill="none" stroke="#41BDF5" stroke-width="4.5" stroke-linecap="round" opacity="0.45"/>
+  <path d="M 37 54 A 30 30 0 0 0 37 106" fill="none" stroke="#41BDF5" stroke-width="4.5" stroke-linecap="round" opacity="0.7"/>
 
-  <!-- Bluetooth arcs (signal) -->
-  <path d="M 26 30 A 66 66 0 0 1 26 130" fill="none" stroke="#41BDF5" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
-  <path d="M 14 42 A 50 50 0 0 1 14 118" fill="none" stroke="#41BDF5" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
-
-  <!-- Bluetooth rune -->
-  <use href="#bt" x="56" y="80"/>
+  <!-- Bluetooth bind-rune (Hagall + Bjarkan), correct geometry:
+       - vertical stem
+       - two wedges on the right meeting at the stem centre point
+       - two wings crossing the stem and protruding to the left -->
+  <g transform="translate(52,80) scale(2.6)" fill="none" stroke="#41BDF5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 0 -10 L 0 10"/>
+    <path d="M 0 -10 L 5.7 -4.3 L 0 0"/>
+    <path d="M 0 10 L 5.7 4.3 L 0 0"/>
+    <path d="M 0 0 L -5.7 -5.7"/>
+    <path d="M 0 0 L -5.7 5.7"/>
+  </g>
 
   <!-- Fidbox device -->
   <g transform="translate(120,44)">

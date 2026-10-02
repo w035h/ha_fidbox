@@ -1,13 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <rect width="256" height="256" rx="48" fill="#1c2833"/>
-  <!-- Bluetooth rune top-right of device -->
-  <g transform="translate(204,52)">
-    <path d="M 0 -16 L 11 -5 L 0 6 Z" fill="#41BDF5"/>
-    <path d="M 0 16 L 11 5 L 0 -6 Z" fill="#41BDF5" opacity="0.55"/>
-    <line x1="0" y1="-16" x2="0" y2="16" stroke="#41BDF5" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Bluetooth bind-rune (Hagall + Bjarkan), correct geometry -->
+  <g transform="translate(52,128) scale(3.2)" fill="none" stroke="#41BDF5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 0 -10 L 0 10"/>
+    <path d="M 0 -10 L 5.7 -4.3 L 0 0"/>
+    <path d="M 0 10 L 5.7 4.3 L 0 0"/>
+    <path d="M 0 0 L -5.7 -5.7"/>
+    <path d="M 0 0 L -5.7 5.7"/>
   </g>
+
   <!-- Fidbox device -->
-  <g transform="translate(52,64)">
+  <g transform="translate(96,64)">
     <rect x="0" y="0" width="140" height="128" rx="16" fill="#263238"/>
     <rect x="12" y="12" width="116" height="48" rx="10" fill="#8D6E63"/>
     <rect x="12" y="68" width="116" height="48" rx="10" fill="#546E7A"/>
