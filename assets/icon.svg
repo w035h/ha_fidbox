@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#1c2833"/>
+  <!-- Fidbox device -->
+  <g transform="translate(58,58)">
+    <rect x="0" y="0" width="140" height="140" rx="16" fill="#263238"/>
+    <rect x="12" y="12" width="116" height="52" rx="10" fill="#8D6E63"/>
+    <rect x="12" y="72" width="116" height="52" rx="10" fill="#546E7A"/>
+    <!-- humidity drops -->
+    <path d="M 34 32 C 34 32 26 44 26 50 A 9 9 0 0 0 44 50 C 44 44 34 32 34 32 Z" fill="#41BDF5"/>
+    <path d="M 96 92 C 96 92 88 104 88 110 A 9 9 0 0 0 106 110 C 106 104 96 92 96 92 Z" fill="#41BDF5"/>
+    <!-- temperature -->
+    <g transform="translate(88,22)">
+      <circle cx="9" cy="30" r="8" fill="#FF7043"/>
+      <path d="M 9 4 L 9 22" stroke="#FF7043" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(32,84)">
+      <circle cx="9" cy="22" r="6" fill="#4FC3F7"/>
+      <path d="M 9 4 L 9 16" stroke="#4FC3F7" stroke-width="5" stroke-linecap="round"/>
+    </g>
+  </g>
+</svg>

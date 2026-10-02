@@ -1,5 +1,6 @@
 {
   "name": "Fidbox",
   "render_readme": true,
-  "homeassistant": "2024.8.0"
+  "homeassistant": "2024.8.0",
+  "icon": "https://raw.githubusercontent.com/w035h/ha_fidbox/main/assets/icon.svg"
 }
