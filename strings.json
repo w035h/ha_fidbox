@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "description": "Discovered Fidbox devices: {count}. Choose your device and set the polling interval.",
+        "data": {
+          "address": "Device",
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    },
+    "abort": {
+      "no_devices_found": "No Fidbox devices found. Wake up the Fidbox and make sure Home Assistant can see the device via Bluetooth.",
+      "already_configured": "This Fidbox is already configured.",
+      "not_fidbox": "The discovered device is not a Fidbox."
+    }
+  }
+}
