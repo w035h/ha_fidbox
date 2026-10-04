@@ -1,8 +1,11 @@
-"""Config flow for the Fidbox integration.
+"""Config flow and options flow for the Fidbox integration.
 
 Supports automatic discovery: as soon as Home Assistant sees a BLE
-advertisement with a name starting with "Fidbox", HA starts this flow and a
-discovery notification appears in the UI.
+advertisement with a name starting with "FIDBOX", HA starts this flow and
+a discovery notification appears in the UI.
+
+The options flow allows changing the poll interval and the per-device
+temperature calibration offset.
 """
 from __future__ import annotations
 
@@ -12,10 +15,23 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
 from homeassistant.const import CONF_ADDRESS, CONF_NAME, CONF_SCAN_INTERVAL
+from homeassistant.core import callback
 
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS, DOMAIN, LOCAL_NAME_PREFIXES
+from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_TEMP_OFFSET,
+    DEFAULT_SCAN_INTERVAL_SECONDS,
+    DEFAULT_TEMP_OFFSET,
+    DOMAIN,
+    LOCAL_NAME_PREFIXES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,13 +94,7 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
-        """Automatic discovery via a BLE advertisement.
-
-        Home Assistant calls this step as soon as a device with a matching
-        advertisement appears. For custom integrations without registered
-        manifest matching, the Bluetooth integration passes all
-        advertisements; we filter here on the Fidbox name.
-        """
+        """Automatic discovery via a BLE advertisement."""
         if not _is_fidbox(discovery_info.name):
             return self.async_abort(reason="not_fidbox")
 
@@ -96,3 +106,52 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
 
         # Continue to the user step with the discovered device preselected.
         return await self.async_step_user()
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> FidboxOptionsFlow:
+        """Create the options flow."""
+        return FidboxOptionsFlow(config_entry)
+
+
+class FidboxOptionsFlow(OptionsFlow):
+    """Options flow: poll interval and temperature calibration offset."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize the options flow from the current entry values."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS),
+        )
+        current_offset = self.config_entry.options.get(
+            CONF_TEMP_OFFSET,
+            self.config_entry.data.get(CONF_TEMP_OFFSET, DEFAULT_TEMP_OFFSET),
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=current_interval,
+                        description={
+                            "suggested_value": current_interval,
+                        },
+                    ): vol.All(vol.Coerce(int), vol.Range(min=60, max=86400)),
+                    vol.Optional(
+                        CONF_TEMP_OFFSET,
+                        default=current_offset,
+                    ): vol.All(vol.Coerce(float), vol.Range(min=-20.0, max=20.0)),
+                }
+            ),
+        )

@@ -1,14 +1,14 @@
 {
   "domain": "fidbox",
   "name": "Fidbox",
-  "codeowners": ["@w035h"],
+  "codeowners": ["w035h"],
   "config_flow": true,
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/w035h/ha_fidbox",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/w035h/ha_fidbox/issues",
-  "requirements": [],
+  "version": "0.1.2",
   "bluetooth": [
     {
       "local_name": "FIDBOX*"
@@ -16,6 +16,5 @@
     {
       "service_uuid": "1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9"
     }
-  ],
-  "version": "0.1.1"
+  ]
 }

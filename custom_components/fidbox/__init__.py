@@ -10,9 +10,15 @@ Protocol (determined through BLE reverse engineering):
                byte 12-13: relative humidity sensor 2 (uint16 BIG-endian, 1/1000 %)
   Battery    : 1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9 (1 byte, %)
 
-NOTE: the scale (1/1000) and endianness were derived from multiple
-measurements; calibration against the official Fidbox app is still in
-progress (see README).
+Calibration: the raw temperature values read over BLE are consistently
+~4.5 °C higher than the values shown by the official Fidbox app and by an
+independent reference thermometer (verified over three days). A fixed
+temperature offset (default -4.5 °C) is applied to both temperature
+channels. The offset is configurable per device via the integration
+options. Humidity values are NOT corrected: the Fidbox is mounted inside
+the floor construction (between the wooden floor and the concrete
+screed), so its humidity readings describe the cavity microclimate and
+are meaningful as-is.
 """
 from __future__ import annotations
 
@@ -33,7 +39,9 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import (
+    CONF_TEMP_OFFSET,
     DEFAULT_SCAN_INTERVAL_SECONDS,
+    DEFAULT_TEMP_OFFSET,
     DOMAIN,
     MANUFACTURER,
 )
@@ -49,8 +57,13 @@ BATTERY_CHAR_UUID = "1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9"
 BLE_TIMEOUT = 20.0
 
 
-def parse_fidbox_data(data: bytes) -> dict[str, Any]:
-    """Parse the measurement values from the Fidbox data characteristic."""
+def parse_fidbox_data(data: bytes, temp_offset: float = DEFAULT_TEMP_OFFSET) -> dict[str, Any]:
+    """Parse the measurement values from the Fidbox data characteristic.
+
+    A fixed temperature offset (default -4.5 °C, see module docstring) is
+    applied to both temperature channels. Humidity values are returned
+    uncorrected.
+    """
     if len(data) < 14:
         raise UpdateFailed(f"Payload too short for parsing: {data.hex()}")
     try:
@@ -65,20 +78,24 @@ def parse_fidbox_data(data: bytes) -> dict[str, Any]:
         return int.from_bytes(data[i:i + 2], "big", signed=False) / 1000.0
 
     return {
-        "temperature_1": u16(6),
+        "temperature_1": u16(6) + temp_offset,
         "humidity_1": u16(8),
-        "temperature_2": u16(10),
+        "temperature_2": u16(10) + temp_offset,
         "humidity_2": u16(12),
         "measurement_time": timestamp,
     }
 
 
+def _get_option(entry: ConfigEntry, key: str, default: Any) -> Any:
+    """Read an option, falling back to entry data and a default."""
+    return entry.options.get(key, entry.data.get(key, default))
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a Fidbox from a config entry."""
     address = entry.unique_id
-    scan_interval = entry.options.get(
-        CONF_SCAN_INTERVAL, entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS)
-    )
+    scan_interval = _get_option(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS)
+    temp_offset = float(_get_option(entry, CONF_TEMP_OFFSET, DEFAULT_TEMP_OFFSET))
 
     async def _async_update() -> dict[str, Any]:
         ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
@@ -98,7 +115,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise UpdateFailed(f"Could not read Fidbox {address}: {err}") from err
 
         _LOGGER.debug("Fidbox %s raw data: %s", address, data.hex())
-        parsed = parse_fidbox_data(data)
+        parsed = parse_fidbox_data(data, temp_offset=temp_offset)
         parsed["local_name"] = ble_device.name or "Fidbox"
         if battery is not None:
             parsed["battery"] = battery
