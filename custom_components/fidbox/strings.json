@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect a Fidbox",
+        "description": "Found {count} Fidbox device(s). Choose the device you want to add and optionally adjust the poll interval (seconds).",
+        "data": {
+          "address": "Device",
+          "scan_interval": "Poll interval (seconds)"
+        }
+      },
+      "no_devices_found": {
+        "title": "No Fidbox found",
+        "description": "No Fidbox was found yet. A Fidbox only advertises itself around its daily sync/wake moment, so it is invisible to Home Assistant most of the day.\n\nTo make it visible now:\n1. Open the official Fidbox app and start a sync - this wakes the device.\n2. Wait 30-60 seconds.\n3. Press Continue to search again.\n\nTip: if the device stays invisible, place a Bluetooth gateway (ESPHome proxy) closer to the Fidbox location - the device is often built into the floor."
+      },
+      "init": {
+        "title": "Fidbox options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)",
+          "temperature_offset": "Temperature offset (\u00b0C)"
+        }
+      }
+    },
+    "abort": {
+      "not_fidbox": "The discovered device is not a Fidbox.",
+      "already_configured": "This Fidbox is already configured."
+    }
+  }
+}

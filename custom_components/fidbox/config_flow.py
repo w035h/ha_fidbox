@@ -76,7 +76,10 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._discovered[service_info.address] = service_info.name or "Fidbox"
 
         if not self._discovered:
-            return self.async_abort(reason="no_devices_found")
+            # Show a helpful screen instead of a bare abort: the Fidbox
+            # only advertises around its daily sync/wake moment, so users
+            # need to know how to make it visible.
+            return self.async_show_form(step_id="no_devices_found")
 
         return self.async_show_form(
             step_id="user",
@@ -90,6 +93,12 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             description_placeholders={"count": str(len(self._discovered))},
         )
+
+    async def async_step_no_devices_found(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Shown when no Fidbox was found; lets the user retry."""
+        return await self.async_step_user()
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
