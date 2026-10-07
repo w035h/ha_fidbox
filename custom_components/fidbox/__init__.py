@@ -23,8 +23,10 @@ are meaningful as-is.
 Device behaviour: the Fidbox sleeps most of the time and only wakes up
 briefly. Home Assistant only routes connections to a device with a
 *recent* advertisement, and connections must be established through
-bleak_retry_connector.establish_connection() so HA can route them via
-the correct Bluetooth backend/proxy. This integration therefore:
+bleak_retry_connector.establish_connection() with the
+BleakClientWithServiceCache client class (imported as BleakClient from
+bleak_retry_connector) so HA can route them via the correct Bluetooth
+backend/proxy. This integration therefore:
   - establishes connections via bleak_retry_connector;
   - retries the connection several times per poll, spread over a few
     minutes to catch a wake window;
@@ -37,8 +39,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
-from bleak import BleakClient, BleakError
-from bleak_retry_connector import establish_connection
+from bleak import BleakError
+from bleak_retry_connector import BleakClient, establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
@@ -127,10 +129,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Try one connection and read; return None on failure."""
         client: BleakClient | None = None
         try:
-            # IMPORTANT: use bleak_retry_connector so Home Assistant can
-            # route the connection via the correct Bluetooth backend
-            # (USB adapter or ESPHome/Shelly proxy). Argument order is
-            # (client_class, device, hass, name, ...).
+            # IMPORTANT: use the BleakClient from bleak_retry_connector
+            # (BleakClientWithServiceCache) - the plain bleak BleakClient
+            # is incompatible with habluetooth's disconnected-callback
+            # wrapping. Argument order: (client_class, device, hass, name).
             client = await establish_connection(
                 BleakClient,
                 ble_device,
