@@ -36,12 +36,11 @@ from .const import (
     DEFAULT_SCAN_INTERVAL_SECONDS,
     DEFAULT_TEMP_OFFSET,
     DOMAIN,
+    FIDBOX_SERVICE_UUID,
     LOCAL_NAME_PREFIXES,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-FIDBOX_SERVICE_UUID = "1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9"
 
 
 def _is_fidbox_name(name: str | None) -> bool:

@@ -14,9 +14,11 @@ from homeassistant.const import CONF_ADDRESS, PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 
-from . import DataUpdateCoordinator
 from .const import DOMAIN, MANUFACTURER
 
 SENSORS = [
