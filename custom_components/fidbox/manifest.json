@@ -5,7 +5,7 @@
   "config_flow": true,
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/w035h/ha_fidbox",
-  "integration_type": "hub",
+  "integration_type": "device",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/w035h/ha_fidbox/issues",
   "version": "0.2.2",
