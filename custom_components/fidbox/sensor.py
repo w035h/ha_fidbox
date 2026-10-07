@@ -63,13 +63,17 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Fidbox sensors from a config entry."""
+    """Set up Fidbox sensors from a config entry.
+
+    Entities are always created, even if the first poll did not reach the
+    device yet (the Fidbox sleeps most of the time). Sensors without data
+    simply show "unknown" until the first successful read.
+    """
     coordinator: DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
     address = entry.data[CONF_ADDRESS]
     async_add_entities(
         FidboxSensorEntity(coordinator, entry, description, address)
         for description in SENSORS
-        if description.key in coordinator.data
     )
 
 
@@ -92,17 +96,26 @@ class FidboxSensorEntity(CoordinatorEntity, SensorEntity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, address)},
             connections={("bluetooth", address)},
-            name=coordinator.data.get("local_name", "Fidbox"),
+            name=coordinator.data.get("local_name", "Fidbox") if coordinator.data else "Fidbox",
             manufacturer=MANUFACTURER,
             model="Fidbox",
         )
 
     @property
     def native_value(self) -> Any:
+        if self.coordinator.data is None:
+            return None
         return self.coordinator.data.get(self.entity_description.key)
+
+    @property
+    def available(self) -> bool:
+        """Available once the device has been read at least once."""
+        return self.coordinator.last_update_success and self.coordinator.data is not None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Show the timestamp of the last measurement as an attribute."""
+        if self.coordinator.data is None:
+            return None
         ts = self.coordinator.data.get("measurement_time")
         return {"last_measurement": ts.isoformat()} if ts else None
