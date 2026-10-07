@@ -24,12 +24,13 @@ Device behaviour: the Fidbox sleeps most of the time and only wakes up
 briefly. Connections must be established through
 bleak_retry_connector.establish_connection() with the
 BleakClientWithServiceCache client class, using a device from the
-CONNECTABLE discovery history only - habluetooth can only build a
-working connection via a connectable path (a non-connectable entry
-crashes the callback wiring). A device seen only by a non-connectable
-scanner (e.g. a Shelly) cannot be connected to at all; in that case the
-poll simply waits for the next attempt. This integration therefore:
-  - establishes connections via bleak_retry_connector, connectable only;
+CONNECTABLE discovery history only. The current bleak-retry-connector
+signature is establish_connection(client_class, device, name,
+disconnected_callback=None, max_attempts=..., ...) - there is NO hass
+argument; passing extra positionals shifts them into
+disconnected_callback, which crashes habluetooth's callback wiring at
+connect time. This integration therefore:
+  - calls establish_connection with exactly (client_class, device, name);
   - retries the connection several times per poll, spread over a few
     minutes to catch a wake window;
   - does not fail setup if the first poll cannot reach the device.
@@ -69,7 +70,6 @@ FIDBOX_SERVICE_UUID = "1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9"
 DATA_CHAR_UUID = "1bc5f1d7-0200-b79a-e411-f2a6c0a4ddc9"
 BATTERY_CHAR_UUID = "1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9"
 
-BLE_TIMEOUT = 20.0
 CONNECT_ATTEMPTS = 5          # connection attempts per poll
 CONNECT_RETRY_DELAY = 25.0    # seconds between attempts (spans wake windows)
 
@@ -114,9 +114,9 @@ def _find_connectable_ble_device(hass: HomeAssistant, address: str):
     Do NOT fall back to the non-connectable history here: habluetooth
     can only establish a working connection via a connectable path.
     Trying to connect to a non-connectable entry crashes its callback
-    wiring ("the first argument must be callable"). If the device is
-    currently only visible to non-connectable scanners, there is no way
-    to connect to it anyway - the caller should just wait and retry.
+    wiring. If the device is currently only visible to non-connectable
+    scanners, there is no way to connect to it anyway - the caller
+    should just wait and retry.
     """
     return bluetooth.async_ble_device_from_address(hass, address, connectable=True)
 
@@ -131,18 +131,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         """Try one connection and read; return None on failure."""
         client: BleakClient | None = None
         try:
-            # IMPORTANT: use the BleakClient from bleak_retry_connector
-            # (BleakClientWithServiceCache) and let Home Assistant route
-            # the connection via the correct Bluetooth backend (USB
-            # adapter or ESPHome proxy). Argument order:
-            # (client_class, device, hass, name).
+            # IMPORTANT: the current bleak-retry-connector signature is
+            # establish_connection(client_class, device, name,
+            # disconnected_callback=None, max_attempts=...). There is NO
+            # hass parameter and no timeout parameter - extra positionals
+            # shift into disconnected_callback and crash habluetooth's
+            # callback wiring at connect time.
             client = await establish_connection(
                 BleakClient,
                 ble_device,
-                hass,
                 "fidbox " + address,
                 max_attempts=1,
-                timeout=BLE_TIMEOUT,
             )
             data = await client.read_gatt_char(DATA_CHAR_UUID)
             battery: int | None = None
