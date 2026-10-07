@@ -21,13 +21,15 @@ screed), so its humidity readings describe the cavity microclimate and
 are meaningful as-is.
 
 Device behaviour: the Fidbox sleeps most of the time and only wakes up
-briefly. Home Assistant only routes connections to a device with a
-*recent* advertisement, and connections must be established through
+briefly. Connections must be established through
 bleak_retry_connector.establish_connection() with the
-BleakClientWithServiceCache client class (imported as BleakClient from
-bleak_retry_connector) so HA can route them via the correct Bluetooth
-backend/proxy. This integration therefore:
-  - establishes connections via bleak_retry_connector;
+BleakClientWithServiceCache client class, using a device from the
+CONNECTABLE discovery history only - habluetooth can only build a
+working connection via a connectable path (a non-connectable entry
+crashes the callback wiring). A device seen only by a non-connectable
+scanner (e.g. a Shelly) cannot be connected to at all; in that case the
+poll simply waits for the next attempt. This integration therefore:
+  - establishes connections via bleak_retry_connector, connectable only;
   - retries the connection several times per poll, spread over a few
     minutes to catch a wake window;
   - does not fail setup if the first poll cannot reach the device.
@@ -106,17 +108,17 @@ def _get_option(entry: ConfigEntry, key: str, default: Any) -> Any:
     return entry.options.get(key, entry.data.get(key, default))
 
 
-def _find_ble_device(hass: HomeAssistant, address: str):
-    """Look up the BLE device without requiring connectable=True.
+def _find_connectable_ble_device(hass: HomeAssistant, address: str):
+    """Look up the BLE device in the CONNECTABLE discovery history only.
 
-    The Fidbox often advertises as non-connectable while still
-    accepting connections, so filtering on connectable would make
-    the device invisible to the coordinator.
+    Do NOT fall back to the non-connectable history here: habluetooth
+    can only establish a working connection via a connectable path.
+    Trying to connect to a non-connectable entry crashes its callback
+    wiring ("the first argument must be callable"). If the device is
+    currently only visible to non-connectable scanners, there is no way
+    to connect to it anyway - the caller should just wait and retry.
     """
-    ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
-    if ble_device is not None:
-        return ble_device
-    return bluetooth.async_ble_device_from_address(hass, address, connectable=False)
+    return bluetooth.async_ble_device_from_address(hass, address, connectable=True)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -130,9 +132,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         client: BleakClient | None = None
         try:
             # IMPORTANT: use the BleakClient from bleak_retry_connector
-            # (BleakClientWithServiceCache) - the plain bleak BleakClient
-            # is incompatible with habluetooth's disconnected-callback
-            # wrapping. Argument order: (client_class, device, hass, name).
+            # (BleakClientWithServiceCache) and let Home Assistant route
+            # the connection via the correct Bluetooth backend (USB
+            # adapter or ESPHome proxy). Argument order:
+            # (client_class, device, hass, name).
             client = await establish_connection(
                 BleakClient,
                 ble_device,
@@ -174,23 +177,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for attempt in range(1, CONNECT_ATTEMPTS + 1):
             # Re-look up the device every attempt: the BLE cache updates
             # continuously and a fresh entry may appear mid-poll.
-            ble_device = _find_ble_device(hass, address)
+            ble_device = _find_connectable_ble_device(hass, address)
             if ble_device is not None:
                 result = await _async_read_once(ble_device)
                 if result is not None:
                     if attempt > 1:
                         _LOGGER.info("Fidbox %s read succeeded on attempt %d", address, attempt)
                     return result
+            else:
+                # Device not in the connectable history right now: it is
+                # either asleep or only seen by non-connectable scanners.
+                _LOGGER.debug(
+                    "Fidbox %s: no connectable path on attempt %d/%d",
+                    address, attempt, CONNECT_ATTEMPTS,
+                )
 
             if attempt < CONNECT_ATTEMPTS:
                 # Wait for the next wake/advertising window.
                 await asyncio.sleep(CONNECT_RETRY_DELAY)
-            _LOGGER.debug("Fidbox %s: attempt %d/%d failed", address, attempt, CONNECT_ATTEMPTS)
 
         raise UpdateFailed(
             f"Could not read Fidbox {address} after {CONNECT_ATTEMPTS} attempts "
-            f"(device sleeps most of the time; it may also be claimed by the "
-            f"official app)"
+            f"(device sleeps most of the time and needs a connectable scanner, "
+            f"e.g. an ESPHome proxy, within range)"
         )
 
     coordinator = DataUpdateCoordinator(
