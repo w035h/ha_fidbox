@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  validate:
+    name: Validate against latest HA
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Home Assistant
+        run: pip install homeassistant
+      - name: Import integration modules
+        working-directory: ${{ github.workspace }}/..
+        run: |
+          cp -r "$GITHUB_WORKSPACE/custom_components" .
+          cat > check_imports.py <<'EOF'
+          import importlib
+
+          import homeassistant.components.bluetooth
+
+          for module in (
+              "custom_components.fidbox",
+              "custom_components.fidbox.sensor",
+              "custom_components.fidbox.config_flow",
+              "custom_components.fidbox.const",
+          ):
+              importlib.import_module(module)
+              print(f"imported {module}")
+          EOF
+          python check_imports.py
+      - name: Manifest is valid JSON
+        run: python -c "import json; json.load(open('custom_components/fidbox/manifest.json'))"
