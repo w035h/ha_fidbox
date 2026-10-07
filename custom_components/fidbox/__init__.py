@@ -129,12 +129,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         try:
             # IMPORTANT: use bleak_retry_connector so Home Assistant can
             # route the connection via the correct Bluetooth backend
-            # (USB adapter or ESPHome/Shelly proxy). A raw BleakClient
-            # cannot use the proxy backends reliably.
+            # (USB adapter or ESPHome/Shelly proxy). Argument order is
+            # (client_class, device, hass, name, ...).
             client = await establish_connection(
                 BleakClient,
-                hass,
                 ble_device,
+                hass,
                 "fidbox " + address,
                 max_attempts=1,
                 timeout=BLE_TIMEOUT,
