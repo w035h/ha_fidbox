@@ -21,10 +21,11 @@ screed), so its humidity readings describe the cavity microclimate and
 are meaningful as-is.
 
 Device behaviour: the Fidbox sleeps most of the time and only wakes up
-briefly (roughly every 2 minutes according to the official app, but in
-practice only for short windows). Home Assistant only routes connections
-to a device with a *recent* advertisement, so a single poll attempt
-usually misses the wake window. This integration therefore:
+briefly. Home Assistant only routes connections to a device with a
+*recent* advertisement, and connections must be established through
+bleak_retry_connector.establish_connection() so HA can route them via
+the correct Bluetooth backend/proxy. This integration therefore:
+  - establishes connections via bleak_retry_connector;
   - retries the connection several times per poll, spread over a few
     minutes to catch a wake window;
   - does not fail setup if the first poll cannot reach the device.
@@ -37,6 +38,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from bleak import BleakClient, BleakError
+from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_SCAN_INTERVAL
@@ -123,18 +125,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def _async_read_once(ble_device) -> dict[str, Any] | None:
         """Try one connection and read; return None on failure."""
+        client: BleakClient | None = None
         try:
-            async with BleakClient(ble_device, timeout=BLE_TIMEOUT) as client:
-                data = await client.read_gatt_char(DATA_CHAR_UUID)
-                battery: int | None = None
-                try:
-                    batt_bytes = await client.read_gatt_char(BATTERY_CHAR_UUID)
-                    battery = batt_bytes[0]
-                except (BleakError, asyncio.TimeoutError, OSError) as err:
-                    _LOGGER.debug("Failed to read battery: %s", err)
+            # IMPORTANT: use bleak_retry_connector so Home Assistant can
+            # route the connection via the correct Bluetooth backend
+            # (USB adapter or ESPHome/Shelly proxy). A raw BleakClient
+            # cannot use the proxy backends reliably.
+            client = await establish_connection(
+                BleakClient,
+                hass,
+                ble_device,
+                "fidbox " + address,
+                max_attempts=1,
+                timeout=BLE_TIMEOUT,
+            )
+            data = await client.read_gatt_char(DATA_CHAR_UUID)
+            battery: int | None = None
+            try:
+                batt_bytes = await client.read_gatt_char(BATTERY_CHAR_UUID)
+                battery = batt_bytes[0]
+            except (BleakError, asyncio.TimeoutError, OSError) as err:
+                _LOGGER.debug("Failed to read battery: %s", err)
         except (BleakError, asyncio.TimeoutError, OSError, FileNotFoundError) as err:
             _LOGGER.debug("Connection attempt failed for %s: %s", address, err)
+            if client is not None:
+                try:
+                    await client.disconnect()
+                except BleakError:
+                    pass
             return None
+        finally:
+            if client is not None and client.is_connected:
+                try:
+                    await client.disconnect()
+                except BleakError:
+                    pass
 
         _LOGGER.debug("Fidbox %s raw data: %s", address, data.hex())
         parsed = parse_fidbox_data(data, temp_offset=temp_offset)
