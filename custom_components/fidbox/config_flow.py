@@ -1,8 +1,14 @@
 """Config flow and options flow for the Fidbox integration.
 
 Supports automatic discovery: as soon as Home Assistant sees a BLE
-advertisement with a name starting with "FIDBOX", HA starts this flow and
-a discovery notification appears in the UI.
+advertisement with a name starting with "FIDBOX" or carrying the Fidbox
+service UUID, HA starts this flow and a discovery notification appears
+in the UI.
+
+Note: the Fidbox often advertises as non-connectable (connectable=False)
+while still accepting connections at other moments. The flow therefore
+does NOT filter on connectable devices - doing so makes the device
+invisible in the manual flow.
 
 The options flow allows changing the poll interval and the per-device
 temperature calibration offset.
@@ -35,11 +41,26 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+FIDBOX_SERVICE_UUID = "1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9"
 
-def _is_fidbox(name: str | None) -> bool:
+
+def _is_fidbox_name(name: str | None) -> bool:
     if not name:
         return False
     return name.startswith(LOCAL_NAME_PREFIXES)
+
+
+def _is_fidbox(service_info: Any) -> bool:
+    """Match on advertised name or the Fidbox service UUID.
+
+    The Fidbox sometimes advertises without a name, but it always
+    includes its service UUID in the advertisement.
+    """
+    if _is_fidbox_name(service_info.name):
+        return True
+    return FIDBOX_SERVICE_UUID in [
+        uuid.lower() for uuid in getattr(service_info, "service_uuids", []) or []
+    ]
 
 
 class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -70,10 +91,16 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         # Find Fidbox devices in the Bluetooth discovery cache.
+        # IMPORTANT: do not filter on connectable=True - the Fidbox
+        # regularly advertises as non-connectable.
         self._discovered = {}
-        for service_info in bluetooth.async_discovered_service_info(self.hass, connectable=True):
-            if _is_fidbox(service_info.name) and service_info.address not in self._discovered:
-                self._discovered[service_info.address] = service_info.name or "Fidbox"
+        for service_info in bluetooth.async_discovered_service_info(self.hass):
+            if not _is_fidbox(service_info):
+                continue
+            if service_info.address not in self._discovered:
+                self._discovered[service_info.address] = (
+                    service_info.name or "Fidbox"
+                )
 
         if not self._discovered:
             # Show a helpful screen instead of a bare abort: the Fidbox
@@ -104,14 +131,14 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
         self, discovery_info: BluetoothServiceInfoBleak
     ) -> ConfigFlowResult:
         """Automatic discovery via a BLE advertisement."""
-        if not _is_fidbox(discovery_info.name):
+        if not _is_fidbox(discovery_info):
             return self.async_abort(reason="not_fidbox")
 
         await self.async_set_unique_id(discovery_info.address)
         self._abort_if_unique_id_configured()
 
-        self._discovered = {discovery_info.address: discovery_info.name}
-        self.context["title_placeholders"] = {"name": discovery_info.name}
+        self._discovered = {discovery_info.address: discovery_info.name or "Fidbox"}
+        self.context["title_placeholders"] = {"name": discovery_info.name or "Fidbox"}
 
         # Continue to the user step with the discovered device preselected.
         return await self.async_step_user()

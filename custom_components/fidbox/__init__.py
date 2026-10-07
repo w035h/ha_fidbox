@@ -4,21 +4,26 @@ Protocol (determined through BLE reverse engineering):
   Service    : 1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9
   Measurement: 1bc5f1d7-0200-b79a-e411-f2a6c0a4ddc9 (read + notify, 14 bytes)
                byte 0-5  : timestamp (year-2000, month, day, hour, minute, second)
-               byte 6-7  : temperature sensor 1 (uint16 BIG-endian, 1/1000 °C)
+               byte 6-7  : temperature sensor 1 (uint16 BIG-endian, 1/1000 C)
                byte 8-9  : relative humidity sensor 1 (uint16 BIG-endian, 1/1000 %)
-               byte 10-11: temperature sensor 2 (uint16 BIG-endian, 1/1000 °C)
+               byte 10-11: temperature sensor 2 (uint16 BIG-endian, 1/1000 C)
                byte 12-13: relative humidity sensor 2 (uint16 BIG-endian, 1/1000 %)
   Battery    : 1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9 (1 byte, %)
 
 Calibration: the raw temperature values read over BLE are consistently
-~4.5 °C higher than the values shown by the official Fidbox app and by an
+~4.5 C higher than the values shown by the official Fidbox app and by an
 independent reference thermometer (verified over three days). A fixed
-temperature offset (default -4.5 °C) is applied to both temperature
+temperature offset (default -4.5 C) is applied to both temperature
 channels. The offset is configurable per device via the integration
 options. Humidity values are NOT corrected: the Fidbox is mounted inside
 the floor construction (between the wooden floor and the concrete
 screed), so its humidity readings describe the cavity microclimate and
 are meaningful as-is.
+
+Device behaviour: the Fidbox wakes up every ~2 minutes to advertise,
+but often marks its advertisement as non-connectable while still
+accepting connections. The device lookup therefore does not filter
+on connectable=True.
 """
 from __future__ import annotations
 
@@ -60,7 +65,7 @@ BLE_TIMEOUT = 20.0
 def parse_fidbox_data(data: bytes, temp_offset: float = DEFAULT_TEMP_OFFSET) -> dict[str, Any]:
     """Parse the measurement values from the Fidbox data characteristic.
 
-    A fixed temperature offset (default -4.5 °C, see module docstring) is
+    A fixed temperature offset (default -4.5 C, see module docstring) is
     applied to both temperature channels. Humidity values are returned
     uncorrected.
     """
@@ -91,6 +96,19 @@ def _get_option(entry: ConfigEntry, key: str, default: Any) -> Any:
     return entry.options.get(key, entry.data.get(key, default))
 
 
+def _find_ble_device(hass: HomeAssistant, address: str):
+    """Look up the BLE device without requiring connectable=True.
+
+    The Fidbox often advertises as non-connectable while still
+    accepting connections, so filtering on connectable would make
+    the device invisible to the coordinator.
+    """
+    ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+    if ble_device is not None:
+        return ble_device
+    return bluetooth.async_ble_device_from_address(hass, address, connectable=False)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a Fidbox from a config entry."""
     address = entry.unique_id
@@ -98,7 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     temp_offset = float(_get_option(entry, CONF_TEMP_OFFSET, DEFAULT_TEMP_OFFSET))
 
     async def _async_update() -> dict[str, Any]:
-        ble_device = bluetooth.async_ble_device_from_address(hass, address, connectable=True)
+        ble_device = _find_ble_device(hass, address)
         if ble_device is None:
             raise UpdateFailed(f"Fidbox {address} not found via Bluetooth")
 
