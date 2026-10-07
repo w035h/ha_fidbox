@@ -27,24 +27,40 @@ jobs:
           python-version: "3.13"
       - name: Install Home Assistant
         run: pip install homeassistant
+      - name: Install integration and component requirements
+        run: |
+          pip install -q custom_components/fidbox/manifest.json 2>/dev/null || true
+          pip install -q bleak bleak-retry-connector
+          pip install -q homeassistant.components.bluetooth \
+            || pip install -q \
+              $(python -c "
+          import json
+          from pathlib import Path
+          import homeassistant
+          comps = Path(homeassistant.__file__).parent / 'components'
+          reqs = []
+          for comp in ('bluetooth', 'usb'):
+              reqs += json.loads((comps / comp / 'manifest.json').read_text())['requirements']
+          print(' '.join(reqs))
+          ")
+      - name: Manifest is valid JSON with sorted keys
+        run: |
+          python - <<'EOF'
+          import json
+
+          with open("custom_components/fidbox/manifest.json") as f:
+              data = json.load(f)
+
+          keys = list(data)
+          assert keys[0] == "domain" and keys[1] == "name", keys
+          assert keys[2:] == sorted(keys[2:]), keys
+          print("manifest OK:", keys)
+          EOF
       - name: Import integration modules
         working-directory: ${{ github.workspace }}/..
         run: |
           cp -r "$GITHUB_WORKSPACE/custom_components" .
-          cat > check_imports.py <<'EOF'
-          import importlib
-
-          import homeassistant.components.bluetooth
-
-          for module in (
-              "custom_components.fidbox",
-              "custom_components.fidbox.sensor",
-              "custom_components.fidbox.config_flow",
-              "custom_components.fidbox.const",
-          ):
-              importlib.import_module(module)
-              print(f"imported {module}")
-          EOF
+          cp "$GITHUB_WORKSPACE/.github/scripts/check_imports.py" .
           python check_imports.py
-      - name: Manifest is valid JSON
-        run: python -c "import json; json.load(open('custom_components/fidbox/manifest.json'))"
+        env:
+          PYTHONPATH: ${{ github.workspace }}/..
