@@ -20,10 +20,14 @@ the floor construction (between the wooden floor and the concrete
 screed), so its humidity readings describe the cavity microclimate and
 are meaningful as-is.
 
-Device behaviour: the Fidbox wakes up every ~2 minutes to advertise,
-but often marks its advertisement as non-connectable while still
-accepting connections. The device lookup therefore does not filter
-on connectable=True.
+Device behaviour: the Fidbox sleeps most of the time and only wakes up
+briefly (roughly every 2 minutes according to the official app, but in
+practice only for short windows). Home Assistant only routes connections
+to a device with a *recent* advertisement, so a single poll attempt
+usually misses the wake window. This integration therefore:
+  - retries the connection several times per poll, spread over a few
+    minutes to catch a wake window;
+  - does not fail setup if the first poll cannot reach the device.
 """
 from __future__ import annotations
 
@@ -60,6 +64,8 @@ DATA_CHAR_UUID = "1bc5f1d7-0200-b79a-e411-f2a6c0a4ddc9"
 BATTERY_CHAR_UUID = "1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9"
 
 BLE_TIMEOUT = 20.0
+CONNECT_ATTEMPTS = 5          # connection attempts per poll
+CONNECT_RETRY_DELAY = 25.0    # seconds between attempts (spans wake windows)
 
 
 def parse_fidbox_data(data: bytes, temp_offset: float = DEFAULT_TEMP_OFFSET) -> dict[str, Any]:
@@ -115,11 +121,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     scan_interval = _get_option(entry, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL_SECONDS)
     temp_offset = float(_get_option(entry, CONF_TEMP_OFFSET, DEFAULT_TEMP_OFFSET))
 
-    async def _async_update() -> dict[str, Any]:
-        ble_device = _find_ble_device(hass, address)
-        if ble_device is None:
-            raise UpdateFailed(f"Fidbox {address} not found via Bluetooth")
-
+    async def _async_read_once(ble_device) -> dict[str, Any] | None:
+        """Try one connection and read; return None on failure."""
         try:
             async with BleakClient(ble_device, timeout=BLE_TIMEOUT) as client:
                 data = await client.read_gatt_char(DATA_CHAR_UUID)
@@ -129,8 +132,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     battery = batt_bytes[0]
                 except (BleakError, asyncio.TimeoutError, OSError) as err:
                     _LOGGER.debug("Failed to read battery: %s", err)
-        except (BleakError, asyncio.TimeoutError, OSError) as err:
-            raise UpdateFailed(f"Could not read Fidbox {address}: {err}") from err
+        except (BleakError, asyncio.TimeoutError, OSError, FileNotFoundError) as err:
+            _LOGGER.debug("Connection attempt failed for %s: %s", address, err)
+            return None
 
         _LOGGER.debug("Fidbox %s raw data: %s", address, data.hex())
         parsed = parse_fidbox_data(data, temp_offset=temp_offset)
@@ -138,6 +142,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if battery is not None:
             parsed["battery"] = battery
         return parsed
+
+    async def _async_update() -> dict[str, Any]:
+        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+            # Re-look up the device every attempt: the BLE cache updates
+            # continuously and a fresh entry may appear mid-poll.
+            ble_device = _find_ble_device(hass, address)
+            if ble_device is not None:
+                result = await _async_read_once(ble_device)
+                if result is not None:
+                    if attempt > 1:
+                        _LOGGER.info("Fidbox %s read succeeded on attempt %d", address, attempt)
+                    return result
+
+            if attempt < CONNECT_ATTEMPTS:
+                # Wait for the next wake/advertising window.
+                await asyncio.sleep(CONNECT_RETRY_DELAY)
+            _LOGGER.debug("Fidbox %s: attempt %d/%d failed", address, attempt, CONNECT_ATTEMPTS)
+
+        raise UpdateFailed(
+            f"Could not read Fidbox {address} after {CONNECT_ATTEMPTS} attempts "
+            f"(device sleeps most of the time; it may also be claimed by the "
+            f"official app)"
+        )
 
     coordinator = DataUpdateCoordinator(
         hass,
@@ -147,7 +174,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=int(scan_interval)),
     )
 
-    await coordinator.async_config_entry_first_refresh()
+    # Do not block setup on the first successful read: the Fidbox is only
+    # reachable during short wake windows, so the first poll may miss it.
+    # Setup succeeds and the coordinator keeps retrying on its interval.
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception as err:  # noqa: BLE001 - device may be asleep during setup
+        _LOGGER.warning(
+            "Fidbox %s not reachable yet (%s); will keep retrying on the poll interval",
+            address,
+            err,
+        )
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
@@ -158,7 +195,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         connections={(dr.CONNECTION_BLUETOOTH, address)},
         identifiers={(DOMAIN, address)},
         manufacturer=MANUFACTURER,
-        name=coordinator.data.get("local_name", "Fidbox"),
+        name="Fidbox " + (address[-5:].replace(":", "") if address else "Fidbox"),
         model="Fidbox",
     )
 
