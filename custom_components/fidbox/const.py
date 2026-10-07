@@ -14,3 +14,6 @@ DEFAULT_TEMP_OFFSET = -4.5
 
 # BLE advertisement name prefixes used for discovery.
 LOCAL_NAME_PREFIXES = ("FIDBOX",)
+
+# BLE service UUID used for discovery and matching.
+FIDBOX_SERVICE_UUID = "1bc5f1d0-0200-b79a-e411-f2a6c0a4ddc9"
