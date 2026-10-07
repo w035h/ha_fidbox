@@ -199,7 +199,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         model="Fidbox",
     )
 
-    await hass.config_entries.async_forward_platforms(entry, PLATFORMS)
+    # HA removed async_forward_platforms; the modern API is
+    # async_forward_entry_setups (available since 2024.7).
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
