@@ -1,7 +1,7 @@
 {
   "domain": "fidbox",
   "name": "Fidbox",
-  "codeowners": ["w035h"],
+  "codeowners": ["@w035h"],
   "config_flow": true,
   "dependencies": ["bluetooth"],
   "documentation": "https://github.com/w035h/ha_fidbox",
