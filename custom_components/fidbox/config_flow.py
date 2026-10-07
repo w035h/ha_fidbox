@@ -7,8 +7,9 @@ in the UI.
 
 Note: the Fidbox often advertises as non-connectable (connectable=False)
 while still accepting connections at other moments. The flow therefore
-does NOT filter on connectable devices - doing so makes the device
-invisible in the manual flow.
+does NOT filter on connectable devices and queries both the connectable
+and non-connectable discovery history - doing otherwise makes the
+device invisible in the manual flow.
 
 The options flow allows changing the poll interval and the per-device
 temperature calibration offset.
@@ -22,7 +23,6 @@ import voluptuous as vol
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.config_entries import (
-    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
@@ -63,6 +63,25 @@ def _is_fidbox(service_info: Any) -> bool:
     ]
 
 
+def _discover_fidboxes(hass) -> dict[str, str]:
+    """Find Fidbox devices in both discovery histories.
+
+    The Fidbox regularly advertises as non-connectable, which places it
+    in the non-connectable history only. Querying only the connectable
+    history makes the device invisible in the manual flow.
+    """
+    discovered: dict[str, str] = {}
+    for connectable in (True, False):
+        for service_info in bluetooth.async_discovered_service_info(
+            hass, connectable=connectable
+        ):
+            if not _is_fidbox(service_info):
+                continue
+            if service_info.address not in discovered:
+                discovered[service_info.address] = service_info.name or "Fidbox"
+    return discovered
+
+
 class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
     """Config flow for Fidbox devices, with automatic discovery."""
 
@@ -90,17 +109,7 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        # Find Fidbox devices in the Bluetooth discovery cache.
-        # IMPORTANT: do not filter on connectable=True - the Fidbox
-        # regularly advertises as non-connectable.
-        self._discovered = {}
-        for service_info in bluetooth.async_discovered_service_info(self.hass):
-            if not _is_fidbox(service_info):
-                continue
-            if service_info.address not in self._discovered:
-                self._discovered[service_info.address] = (
-                    service_info.name or "Fidbox"
-                )
+        self._discovered = _discover_fidboxes(self.hass)
 
         if not self._discovered:
             # Show a helpful screen instead of a bare abort: the Fidbox
@@ -145,17 +154,13 @@ class FidboxConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> FidboxOptionsFlow:
+    def async_get_options_flow(config_entry) -> FidboxOptionsFlow:
         """Create the options flow."""
-        return FidboxOptionsFlow(config_entry)
+        return FidboxOptionsFlow()
 
 
 class FidboxOptionsFlow(OptionsFlow):
     """Options flow: poll interval and temperature calibration offset."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize the options flow from the current entry values."""
-        self.config_entry = config_entry
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
