@@ -45,6 +45,12 @@ from typing import Any
 from bleak import BleakError
 from bleak_retry_connector import BleakClient, establish_connection
 from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import (
+    BluetoothCallbackMatcher,
+    BluetoothChange,
+    BluetoothScanningMode,
+    async_register_callback,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant
@@ -72,6 +78,7 @@ BATTERY_CHAR_UUID = "1bc5f1da-0200-b79a-e411-f2a6c0a4ddc9"
 
 CONNECT_ATTEMPTS = 5          # connection attempts per poll
 CONNECT_RETRY_DELAY = 25.0    # seconds between attempts (spans wake windows)
+WAKE_REFRESH_MIN_INTERVAL = 60.0  # min seconds between advertisement-triggered refreshes
 
 
 def parse_fidbox_data(data: bytes, temp_offset: float = DEFAULT_TEMP_OFFSET) -> dict[str, Any]:
@@ -224,6 +231,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
+    # The Fidbox sleeps almost all the time. Polling on a fixed interval
+    # mostly misses the short wake windows. A BLE advertisement from the
+    # device means it is awake NOW, so use it to trigger a coordinator
+    # refresh while the connectable path is fresh.
+    last_wake_refresh = 0.0
+
+    def _on_advertisement(*args: Any, **kwargs: Any) -> None:
+        nonlocal last_wake_refresh
+        change = args[1] if len(args) > 1 else kwargs.get("change")
+        if change is not None and change is not BluetoothChange.ADVERTISEMENT:
+            return
+        now = hass.loop.time()
+        if now - last_wake_refresh < WAKE_REFRESH_MIN_INTERVAL:
+            return
+        last_wake_refresh = now
+        _LOGGER.debug("Fidbox %s advertising; requesting refresh", address)
+        coordinator.async_request_refresh()
+
+    entry.async_on_unload(
+        async_register_callback(
+            hass,
+            _on_advertisement,
+            BluetoothCallbackMatcher(address=address),
+            BluetoothScanningMode.ACTIVE,
+        )
+    )
 
     # Register the device.
     dev_reg = dr.async_get(hass)
