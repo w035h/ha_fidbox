@@ -248,7 +248,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return
         last_wake_refresh = now
         _LOGGER.debug("Fidbox %s advertising; requesting refresh", address)
-        coordinator.async_request_refresh()
+        hass.async_create_background_task(
+            coordinator.async_request_refresh(),
+            f"fidbox wake refresh {address}",
+        )
 
     entry.async_on_unload(
         async_register_callback(
